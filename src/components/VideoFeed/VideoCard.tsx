@@ -4,6 +4,7 @@ interface VideoCardProps {
   src: string;
   title: string;
   isActive: boolean;
+  isNext: boolean;
   videoIndex: number;
 }
 
@@ -16,18 +17,27 @@ function getChannel(title: string): string {
   return words.slice(0, Math.min(2, words.length)).join(' ');
 }
 
-export function VideoCard({ src, title, isActive, videoIndex }: VideoCardProps) {
+export function VideoCard({ src, title, isActive, isNext, videoIndex }: VideoCardProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [paused, setPaused] = useState(false);
   const [progress, setProgress] = useState(0);
   const [liked, setLiked] = useState(false);
   const [disliked, setDisliked] = useState(false);
+  const [buffering, setBuffering] = useState(false);
 
   const channel = getChannel(title);
   const likeCount = LIKE_COUNTS[videoIndex % LIKE_COUNTS.length];
   const commentCount = COMMENT_COUNTS[videoIndex % COMMENT_COUNTS.length];
   const avatarColor = AVATAR_COLORS[videoIndex % AVATAR_COLORS.length];
 
+  // Reset UI state when this slot is recycled to a different video
+  useEffect(() => {
+    setProgress(0);
+    setBuffering(false);
+    setPaused(false);
+  }, [src]);
+
+  // Play/pause based on active state
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -37,9 +47,30 @@ export function VideoCard({ src, title, isActive, videoIndex }: VideoCardProps) 
       setPaused(false);
     } else {
       video.pause();
+      setBuffering(false);
     }
   }, [isActive]);
 
+  // Buffering indicator: show spinner when network is slow
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onWaiting = () => {
+      if (isActive) setBuffering(true);
+    };
+    const onCanPlay = () => setBuffering(false);
+    const onPlaying = () => setBuffering(false);
+    video.addEventListener('waiting', onWaiting);
+    video.addEventListener('canplay', onCanPlay);
+    video.addEventListener('playing', onPlaying);
+    return () => {
+      video.removeEventListener('waiting', onWaiting);
+      video.removeEventListener('canplay', onCanPlay);
+      video.removeEventListener('playing', onPlaying);
+    };
+  }, [isActive]);
+
+  // Progress bar
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !isActive) return;
@@ -74,7 +105,8 @@ export function VideoCard({ src, title, isActive, videoIndex }: VideoCardProps) 
         loop
         playsInline
         webkit-playsinline=""
-        preload={isActive ? 'auto' : 'metadata'}
+        // Active & next video: load fully. Everything else: load nothing.
+        preload={isActive || isNext ? 'auto' : 'none'}
         disablePictureInPicture
       />
 
@@ -112,6 +144,13 @@ export function VideoCard({ src, title, isActive, videoIndex }: VideoCardProps) 
           <svg viewBox="0 0 24 24" width="64" height="64" fill="#fff" opacity="0.8">
             <path d="M8 5v14l11-7z" />
           </svg>
+        </div>
+      )}
+
+      {/* Buffering spinner */}
+      {buffering && isActive && (
+        <div className="buffering-overlay">
+          <div className="spinner" />
         </div>
       )}
 
